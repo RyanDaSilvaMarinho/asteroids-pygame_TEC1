@@ -1,4 +1,3 @@
-
 # ASTEROIDE SINGLEPLAYER v1.0
 # This file manages the application loop, scenes, input handling, and screen drawing.
 
@@ -26,57 +25,75 @@ class Game:
             random.seed(C.RANDOM_SEED)
         self.screen = pg.display.set_mode((C.WIDTH, C.HEIGHT))
         pg.display.set_caption("Asteroides")
-        self.clock = pg.time.Clock()
-        self.font = pg.font.SysFont("consolas", 20)
-        self.big = pg.font.SysFont("consolas", 48)
-        self.scene = Scene("menu")
-        self.world = World()
-        self.final_score = 0    # Pontuação capturada no momento do game over
-        self.go_fade = 0.0      # Temporizador de fade-in da tela de game over
+        self.clock      = pg.time.Clock()
+        self.font       = pg.font.SysFont("consolas", 20)
+        self.big        = pg.font.SysFont("consolas", 48)
+        self.scene      = Scene("menu")
+        self.world      = World()
+        self.final_score = 0     # Pontuação capturada no momento do game over
+        self.go_fade    = 0.0    # Temporizador de fade-in da tela de game over
 
     def run(self):
         # Process events, update the active scene, and render each frame.
         while True:
             dt = self.clock.tick(C.FPS) / 1000.0
+
             for e in pg.event.get():
                 if e.type == pg.QUIT:
                     pg.quit()
                     sys.exit(0)
+
+                # ── KEYDOWN ─────────────────────────────────────────────
                 if e.type == pg.KEYDOWN:
-                    # ESC: encerra o jogo nas cenas menu/play; volta ao menu no game over
                     if e.key == pg.K_ESCAPE:
                         if self.scene.name == "game_over":
                             self.scene = Scene("menu")
                         else:
                             pg.quit()
                             sys.exit(0)
+
                     elif self.scene.name == "play":
                         if e.key == pg.K_SPACE:
                             self.world.try_fire()
                         if e.key == pg.K_LSHIFT:
                             self.world.hyperspace()
+                        # Ctrl esquerdo ou direito ativam a habilidade especial
+                        if e.key in (pg.K_LCTRL, pg.K_RCTRL):
+                            self.world.activate_special()
+
                     elif self.scene.name == "menu":
                         self.world = World()
                         self.scene = Scene("play")
+
                     elif self.scene.name == "game_over":
                         if e.key in (pg.K_RETURN, pg.K_SPACE):
-                            self.world = World()
+                            self.world  = World()
                             self.go_fade = 0.0
-                            self.scene = Scene("play")
+                            self.scene  = Scene("play")
 
+                # ── KEYUP ───────────────────────────────────────────────
+                elif e.type == pg.KEYUP:
+                    if self.scene.name == "play":
+                        # Soltar Ctrl encerra o modo minigun (se ativo)
+                        if e.key in (pg.K_LCTRL, pg.K_RCTRL):
+                            self.world.deactivate_special()
+
+            # ── Atualização e renderização ───────────────────────────────
             keys = pg.key.get_pressed()
             self.screen.fill(C.BLACK)
 
             if self.scene.name == "menu":
                 self.draw_menu()
+
             elif self.scene.name == "play":
                 self.world.update(dt, keys)
                 self.world.draw(self.screen, self.font)
                 # Verifica se o mundo sinalizou fim de jogo
                 if self.world.game_over:
                     self.final_score = self.world.score
-                    self.go_fade = 0.0
-                    self.scene = Scene("game_over")
+                    self.go_fade     = 0.0
+                    self.scene       = Scene("game_over")
+
             elif self.scene.name == "game_over":
                 self.go_fade += dt
                 self.draw_game_over()
@@ -109,9 +126,15 @@ class Game:
     def draw_menu(self):
         # Draw the title screen and the basic control instructions.
         text(self.screen, self.big, "ASTEROIDS",
-             C.WIDTH // 2 - 150, 180)
+             C.WIDTH // 2 - 150, 160)
         text(self.screen, self.font,
-             "Setas: virar/acelerar  Espaço: tiro  Shift: hiper",
-             160, 300)
+             "Setas: virar / acelerar     Espaco: tiro     Shift: hiper",
+             145, 280)
         text(self.screen, self.font,
-             "Pressione qualquer tecla...", 260, 360)
+             "Ctrl: especial  (barra parcial = minigun | barra cheia = radial)",
+             90, 315)
+        text(self.screen, self.font,
+             "Colete os orbies ciano para carregar a barra especial!",
+             155, 350)
+        text(self.screen, self.font,
+             "Pressione qualquer tecla para comecar...", 225, 400)
