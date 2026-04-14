@@ -139,6 +139,10 @@ class World:
         self.ship.hyperspace()
         self.score = max(0, self.score - C.HYPERSPACE_COST)
 
+    def try_dash(self) -> bool:
+        """Tenta executar o dash quântico. Retorna True se executou."""
+        return self.ship.quantum_dash()
+
     # ── Habilidade especial ───────────────────────────────────────────────
 
     def activate_special(self):
@@ -403,6 +407,15 @@ class World:
         txt   = f"SCORE {self.score:06d}   LIVES {self.lives}   WAVE {self.wave}"
         label = font.render(txt, True, C.WHITE)
         surf.blit(label, (10, 10))
+
+        # ── Indicador do dash quântico (abaixo do score) ───────────────
+        dc = self.ship.dash_cool
+        if dc > 0:
+            dash_txt = f"DASH  {dc:.1f}s"
+            dash_lbl = font.render(dash_txt, True, C.GRAY)
+        else:
+            dash_lbl = font.render("DASH  PRONTO", True, C.DASH_TRAIL_COLOR)
+        surf.blit(dash_lbl, (10, 32))
 
         # ── Barra especial (direita do HUD) ────────────────────────────
         bar_w, bar_h = 200, 10
