@@ -7,7 +7,7 @@ from random import uniform
 import pygame as pg
 
 import config as C
-from sprites import Asteroid, Bullet, Orbie, Ship, UFO
+from sprites import Asteroid, Bullet, ChargeBullet, Orbie, Ship, UFO
 from utils import Vec, angle_to_vec, rand_edge_pos, rand_unit_vec
 
 
@@ -17,6 +17,7 @@ class World:
         self.ship        = Ship(Vec(C.WIDTH / 2, C.HEIGHT / 2))
         self.bullets     = pg.sprite.Group()
         self.ufo_bullets = pg.sprite.Group()
+        self.charge_bullets = pg.sprite.Group()
         self.asteroids   = pg.sprite.Group()
         self.ufos        = pg.sprite.Group()
         self.orbies      = pg.sprite.Group()
@@ -30,6 +31,10 @@ class World:
         self.ufo_timer = C.UFO_SPAWN_EVERY
         self.game_over = False   # Sinaliza fim de jogo para a cena principal
 
+        # ── Popups de bônus de proximidade ────────────────────────────────
+        # Cada entrada: [pos, texto, tempo_restante]
+        self.score_popups: list = []
+
         # ── Habilidade especial ────────────────────────────────────────────
         self.orbie_timer    = C.ORBIE_SPAWN_EVERY
         self.special_energy = 0.0    # energia acumulada (em segundos, 0–30)
@@ -41,6 +46,25 @@ class World:
     def start_wave(self):
         # Spawn a new asteroid wave with difficulty based on the current round.
         self.wave += 1
+
+        # Promove asteroides que sobreviveram à wave anterior
+        survivors = list(self.asteroids)
+        for ast in survivors:
+            new_legacy = min(ast.legacy + 1, C.LEGACY_MAX)
+            pos = Vec(ast.pos)
+            vel = Vec(ast.vel)
+            # Guarda o size original (antes do tier-up do legacy atual)
+            # Para promover corretamente, passamos o size base e legacy novo
+            size_base = ast.size  # já está upado; reverter tier para recalcular
+            # Revertemos o tier para o original antes de repassar ao construtor
+            tier_down = {"M": "S", "L": "M"}
+            for _ in range(ast.legacy):
+                size_base = tier_down.get(size_base, size_base)
+            # Velocidade base (sem o multiplicador de legacy atual)
+            vel_base = vel / (C.LEGACY_SPEED_MULT ** ast.legacy)
+            ast.kill()
+            self.spawn_asteroid(pos, vel_base, size_base, new_legacy)
+
         count = 3 + self.wave
         for _ in range(count):
             pos = rand_edge_pos()
@@ -51,9 +75,9 @@ class World:
             vel   = Vec(math.cos(ang), math.sin(ang)) * speed
             self.spawn_asteroid(pos, vel, "L")
 
-    def spawn_asteroid(self, pos: Vec, vel: Vec, size: str):
+    def spawn_asteroid(self, pos: Vec, vel: Vec, size: str, legacy: int = 0):
         # Create an asteroid and register it in the world groups.
-        a = Asteroid(pos, vel, size)
+        a = Asteroid(pos, vel, size, legacy)
         self.asteroids.add(a)
         self.all_sprites.add(a)
 
@@ -97,6 +121,18 @@ class World:
         if b:
             self.bullets.add(b)
             self.all_sprites.add(b)
+
+    def try_fire_charged(self) -> bool:
+        # Dispara a bala carregada se não houver outra na tela. Retorna True se disparou.
+        if self.charge_bullets:
+            self.ship.charge_time = 0.0
+            return False
+        b = self.ship.fire_charged()
+        if b:
+            self.charge_bullets.add(b)
+            self.all_sprites.add(b)
+            return True
+        return False
 
     def hyperspace(self):
         # Trigger the ship hyperspace action and apply its score penalty.
@@ -153,6 +189,13 @@ class World:
     def update(self, dt: float, keys):
         # Update the world simulation, timers, enemy behavior, and progression.
         self.ship.control(keys, dt)
+
+        # Acumula carga enquanto espaço estiver pressionado (teto em CHARGE_MAX)
+        if keys[pg.K_SPACE]:
+            self.ship.charge_time = min(
+                self.ship.charge_time + dt, C.CHARGE_MAX
+            )
+
         self.all_sprites.update(dt)
 
         if self.safe > 0:
@@ -189,6 +232,12 @@ class World:
 
         self.handle_collisions()
 
+        # Atualiza popups de bônus
+        self.score_popups = [
+            [p[0] + Vec(0, -30) * dt, p[1], p[2] - dt]
+            for p in self.score_popups if p[2] > 0
+        ]
+
         if not self.asteroids and self.wave_cool <= 0:
             self.start_wave()
             self.wave_cool = C.WAVE_DELAY
@@ -207,6 +256,31 @@ class World:
         )
         for ast in hits:
             self.split_asteroid(ast)
+
+        # Bala carregada vs asteroides
+        # Se o tier da bala >= tamanho do asteroide: destrói direto (sem fragmentar).
+        # Senão: fragmenta normalmente e a bala some.
+        TIER_ORDER = {"S": 0, "M": 1, "L": 2}
+        charge_hits = pg.sprite.groupcollide(
+            self.asteroids, self.charge_bullets, False, False,
+            collided=lambda a, b: (a.pos - b.pos).length() < a.r,
+        )
+        for ast, bullets_hit in charge_hits.items():
+            b = bullets_hit[0]
+            if TIER_ORDER[b.power] >= TIER_ORDER[ast.size]:
+                # Destrói direto — aplica bônus de proximidade manualmente
+                base  = C.AST_SIZES[ast.size]["score"]
+                mult  = self._proximity_mult(ast.pos)
+                awarded = int(base * mult)
+                self.score += awarded
+                if mult > 1.05:
+                    self.score_popups.append([Vec(ast.pos), f"{mult:.1f}x", 1.2])
+                ast.kill()
+                b.kill()
+            else:
+                # Asteroide maior que o tier: fragmenta normalmente, bala some
+                self.split_asteroid(ast)
+                b.kill()
 
         # Balas de UFO vs asteroides
         ufo_hits = pg.sprite.groupcollide(
@@ -242,6 +316,16 @@ class World:
                     ufo.kill()
                     b.kill()
 
+        # Bala carregada vs UFOs
+        for ufo in list(self.ufos):
+            for b in list(self.charge_bullets):
+                if (ufo.pos - b.pos).length() < (ufo.r + b.r):
+                    score = (C.UFO_SMALL["score"] if ufo.small
+                             else C.UFO_BIG["score"])
+                    self.score += score
+                    ufo.kill()
+                    b.kill()
+
         # Nave coleta orbies
         for orbie in list(self.orbies):
             if (orbie.pos - self.ship.pos).length() < (orbie.r + self.ship.r):
@@ -251,16 +335,32 @@ class World:
                 )
                 orbie.kill()
 
+    def _proximity_mult(self, pos: Vec) -> float:
+        # Retorna o multiplicador de pontos baseado na distância nave↔pos.
+        dist = (pos - self.ship.pos).length()
+        if dist < C.PROXIMITY_MAX_DIST:
+            t = 1.0 - (dist / C.PROXIMITY_MAX_DIST)
+            return 1.0 + t * (C.PROXIMITY_MAX_MULT - 1.0)
+        return 1.0
+
     def split_asteroid(self, ast: Asteroid):
         # Destroy an asteroid, award score, and spawn its smaller fragments.
-        self.score += C.AST_SIZES[ast.size]["score"]
-        split = C.AST_SIZES[ast.size]["split"]
-        pos   = Vec(ast.pos)
+        base_score = C.AST_SIZES[ast.size]["score"]
+        mult       = self._proximity_mult(ast.pos)
+        awarded    = int(base_score * mult)
+        self.score += awarded
+        if mult > 1.05:
+            self.score_popups.append([Vec(ast.pos), f"{mult:.1f}x", 1.2])
+
+        split       = C.AST_SIZES[ast.size]["split"]
+        pos         = Vec(ast.pos)
+        frag_legacy = max(0, ast.legacy - 1)
         ast.kill()
         for s in split:
-            dirv  = rand_unit_vec()
-            speed = uniform(C.AST_VEL_MIN, C.AST_VEL_MAX) * 1.2
-            self.spawn_asteroid(pos, dirv * speed, s)
+            dirv       = rand_unit_vec()
+            base_speed = uniform(C.AST_VEL_MIN, C.AST_VEL_MAX) * 1.2
+            vel = dirv * (base_speed / (C.LEGACY_SPEED_MULT ** frag_legacy))
+            self.spawn_asteroid(pos, vel, s, frag_legacy)
 
     def ship_die(self):
         # Remove uma vida; cancela minigun, sinaliza game over ou reposiciona.
@@ -281,6 +381,15 @@ class World:
         # Draw all world entities and the current HUD information.
         for spr in self.all_sprites:
             spr.draw(surf)
+
+        # Popups de bônus de proximidade
+        for pos, txt, ttl in self.score_popups:
+            alpha  = min(255, int(255 * (ttl / 1.2)))
+            color  = (255, 220, 60)
+            label  = font.render(txt, True, color)
+            label.set_alpha(alpha)
+            surf.blit(label, (int(pos.x) - label.get_width() // 2,
+                               int(pos.y) - label.get_height() // 2))
 
         self._draw_hud(surf, font)
 

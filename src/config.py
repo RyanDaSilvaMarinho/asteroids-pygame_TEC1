@@ -29,6 +29,23 @@ BULLET_RADIUS = 2
 BULLET_TTL = 1.0
 MAX_BULLETS = 4
 
+# Tiro carregado: tempo de carga determina qual tamanho destrói direto.
+# Abaixo do mínimo → tiro normal. Acima do máximo → destrói qualquer tamanho.
+CHARGE_MIN       = 0.4   # segundos mínimos para ativar o carregado
+CHARGE_TIER_S    = 0.4   # destrói S direto (sem fragmentar)
+CHARGE_TIER_M    = 1.0   # destrói M e S direto
+CHARGE_TIER_L    = 2.0   # destrói L, M e S direto
+CHARGE_MAX       = 2.0   # teto da carga (não acumula além disso)
+CHARGE_BULLET_SPEED = 420.0   # mesma velocidade da bala normal
+
+# Legado de wave: asteroides que sobrevivem sobem de tier e ganham velocidade.
+LEGACY_MAX        = 1     # máximo de upgrades acumuláveis
+LEGACY_SPEED_MULT = 1.4   # multiplicador de velocidade por nível de legacy
+
+# Bônus de proximidade: matar perto da nave multiplica os pontos linearmente.
+PROXIMITY_MAX_DIST = 180  # distância máxima para ativar o bônus (px)
+PROXIMITY_MAX_MULT = 2.0  # multiplicador máximo (a queima-roupa)
+
 UFO_SPAWN_EVERY  = 15.0
 UFO_SPEED        = 80.0
 UFO_FIRE_EVERY   = 1.2

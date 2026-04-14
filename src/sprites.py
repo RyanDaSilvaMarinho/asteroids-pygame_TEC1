@@ -34,6 +34,31 @@ class Bullet(pg.sprite.Sprite):
         draw_circle(surf, self.pos, self.r)
 
 
+class ChargeBullet(pg.sprite.Sprite):
+    # Bala carregada: raio proporcional à carga, destrói direto até certo tamanho.
+    # power = "S" | "M" | "L" indica qual tier destrói sem fragmentar.
+    def __init__(self, pos: Vec, vel: Vec, power: str):
+        super().__init__()
+        self.pos   = Vec(pos)
+        self.vel   = Vec(vel)
+        self.power = power
+        self.ttl   = C.BULLET_TTL
+        radius_map = {"S": 4, "M": 7, "L": 11}
+        self.r     = radius_map[power]
+        self.rect  = pg.Rect(0, 0, self.r * 2, self.r * 2)
+
+    def update(self, dt: float):
+        self.pos += self.vel * dt
+        self.pos  = wrap_pos(self.pos)
+        self.ttl -= dt
+        if self.ttl <= 0:
+            self.kill()
+        self.rect.center = self.pos
+
+    def draw(self, surf: pg.Surface):
+        draw_circle(surf, self.pos, self.r)
+
+
 class UfoBullet(pg.sprite.Sprite):
     # Initialize a UFO bullet with position, velocity, and lifetime.
     def __init__(self, pos: Vec, vel: Vec):
@@ -60,11 +85,19 @@ class UfoBullet(pg.sprite.Sprite):
 
 class Asteroid(pg.sprite.Sprite):
     # Initialize an asteroid with its position, velocity, and size profile.
-    def __init__(self, pos: Vec, vel: Vec, size: str):
+    def __init__(self, pos: Vec, vel: Vec, size: str, legacy: int = 0):
         super().__init__()
-        self.pos  = Vec(pos)
-        self.vel  = Vec(vel)
+        self.pos    = Vec(pos)
+        self.vel    = Vec(vel)
+        self.legacy = max(0, min(legacy, C.LEGACY_MAX))
+
+        # Cada nível de legacy sobe 1 tier e aumenta a velocidade
+        tier_up  = {"S": "M", "M": "L", "L": "L"}
+        for _ in range(self.legacy):
+            size = tier_up[size]
         self.size = size
+        self.vel  = self.vel * (C.LEGACY_SPEED_MULT ** self.legacy)
+
         self.r    = C.AST_SIZES[size]["r"]
         self.poly = self._make_poly()
         self.rect = pg.Rect(0, 0, self.r * 2, self.r * 2)
@@ -90,8 +123,9 @@ class Asteroid(pg.sprite.Sprite):
 
     def draw(self, surf: pg.Surface):
         # Draw the asteroid outline on the target surface.
-        pts = [(self.pos + p) for p in self.poly]
-        pg.draw.polygon(surf, C.WHITE, pts, width=1)
+        pts   = [(self.pos + p) for p in self.poly]
+        width = 3 if self.legacy > 0 else 1
+        pg.draw.polygon(surf, C.WHITE, pts, width=width)
 
 
 class Ship(pg.sprite.Sprite):
@@ -106,6 +140,7 @@ class Ship(pg.sprite.Sprite):
         self.alive  = True
         self.r      = C.SHIP_RADIUS
         self.rect   = pg.Rect(0, 0, self.r * 2, self.r * 2)
+        self.charge_time = 0.0   # segundos segurando espaço
 
     def control(self, keys: pg.key.ScancodeWrapper, dt: float):
         # Apply rotation, thrust, and friction from the current input state.
@@ -126,6 +161,23 @@ class Ship(pg.sprite.Sprite):
         vel  = self.vel + dirv * C.SHIP_BULLET_SPEED
         self.cool = C.SHIP_FIRE_RATE
         return Bullet(pos, vel)
+
+    def fire_charged(self) -> "ChargeBullet | None":
+        # Dispara bala carregada com power proporcional ao tempo de carga.
+        if self.cool > 0 or self.charge_time < C.CHARGE_MIN:
+            return None
+        if self.charge_time >= C.CHARGE_TIER_L:
+            power = "L"
+        elif self.charge_time >= C.CHARGE_TIER_M:
+            power = "M"
+        else:
+            power = "S"
+        dirv = angle_to_vec(self.angle)
+        pos  = self.pos + dirv * (self.r + 6)
+        vel  = self.vel + dirv * C.CHARGE_BULLET_SPEED
+        self.cool        = C.SHIP_FIRE_RATE
+        self.charge_time = 0.0
+        return ChargeBullet(pos, vel, power)
 
     def hyperspace(self):
         # Teleport the ship to a random location and reset its momentum.
@@ -154,6 +206,26 @@ class Ship(pg.sprite.Sprite):
         draw_poly(surf, [p1, p2, p3])
         if self.invuln > 0 and int(self.invuln * 10) % 2 == 0:
             draw_circle(surf, self.pos, self.r + 6)
+
+        # Anel de carga: cor e raio indicam o tier atingido
+        if self.charge_time >= C.CHARGE_MIN:
+            t = min(self.charge_time, C.CHARGE_MAX)
+            if t >= C.CHARGE_TIER_L:
+                color = (255, 80, 80)    # vermelho = tier L
+                radius = self.r + 14
+            elif t >= C.CHARGE_TIER_M:
+                color = (255, 200, 50)   # amarelo = tier M
+                radius = self.r + 10
+            else:
+                color = (100, 200, 255)  # azul = tier S
+                radius = self.r + 6
+            # Pisca quando atingiu o tier máximo da carga atual
+            show = True
+            if t >= C.CHARGE_TIER_L and int(t * 8) % 2 == 0:
+                show = False
+            if show:
+                pg.draw.circle(surf, color,
+                               (int(self.pos.x), int(self.pos.y)), radius, 1)
 
 
 class UFO(pg.sprite.Sprite):
