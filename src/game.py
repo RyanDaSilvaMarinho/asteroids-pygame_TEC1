@@ -54,7 +54,7 @@ class Game:
 
                     elif self.scene.name == "play":
                         if e.key == pg.K_SPACE:
-                            self.world.try_fire()
+                            pass   # carga acumula via keys no update
                         if e.key == pg.K_LSHIFT:
                             self.world.hyperspace()
                         # Ctrl esquerdo ou direito ativam a habilidade especial
@@ -74,6 +74,11 @@ class Game:
                 # ── KEYUP ───────────────────────────────────────────────
                 elif e.type == pg.KEYUP:
                     if self.scene.name == "play":
+                        if e.key == pg.K_SPACE:
+                            # Tenta carregado; se não carregou o mínimo, tiro normal
+                            if not self.world.try_fire_charged():
+                                self.world.ship.charge_time = 0.0
+                                self.world.try_fire()
                         # Soltar Ctrl encerra o modo minigun (se ativo)
                         if e.key in (pg.K_LCTRL, pg.K_RCTRL):
                             self.world.deactivate_special()
