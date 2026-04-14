@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import pygame as pg
 
 import config as C
-from systems import World
+from world import World
 from utils import text
 
 
@@ -18,23 +18,28 @@ class Scene:
 
 
 class Game:
-    # Initialize pygame, shared UI resources, and the initial scene state.
+    """Top-level application controller.
+
+    Owns the display, clock, fonts, and the active scene.
+    Delegates all gameplay logic to the World instance.
+    """
+
     def __init__(self):
         pg.init()
         if C.RANDOM_SEED is not None:
             random.seed(C.RANDOM_SEED)
         self.screen = pg.display.set_mode((C.WIDTH, C.HEIGHT))
         pg.display.set_caption("Asteroides")
-        self.clock      = pg.time.Clock()
-        self.font       = pg.font.SysFont("consolas", 20)
-        self.big        = pg.font.SysFont("consolas", 48)
-        self.scene      = Scene("menu")
-        self.world      = World()
-        self.final_score = 0     # Pontuação capturada no momento do game over
-        self.go_fade    = 0.0    # Temporizador de fade-in da tela de game over
+        self.clock = pg.time.Clock()
+        self.font = pg.font.SysFont("consolas", 20)
+        self.big = pg.font.SysFont("consolas", 48)
+        self.scene = Scene("menu")
+        self.world = World()
+        self.final_score = 0
+        self.go_fade = 0.0
 
     def run(self):
-        # Process events, update the active scene, and render each frame.
+        """Main loop: process events, update the active scene, render."""
         while True:
             dt = self.clock.tick(C.FPS) / 1000.0
 
@@ -43,7 +48,6 @@ class Game:
                     pg.quit()
                     sys.exit(0)
 
-                # ── KEYDOWN ─────────────────────────────────────────────
                 if e.type == pg.KEYDOWN:
                     if e.key == pg.K_ESCAPE:
                         if self.scene.name == "game_over":
@@ -53,11 +57,8 @@ class Game:
                             sys.exit(0)
 
                     elif self.scene.name == "play":
-                        if e.key == pg.K_SPACE:
-                            pass   # carga acumula via keys no update
                         if e.key == pg.K_LSHIFT:
                             self.world.try_dash()
-                        # Ctrl esquerdo ou direito ativam a habilidade especial
                         if e.key in (pg.K_LCTRL, pg.K_RCTRL):
                             self.world.activate_special()
 
@@ -67,23 +68,19 @@ class Game:
 
                     elif self.scene.name == "game_over":
                         if e.key in (pg.K_RETURN, pg.K_SPACE):
-                            self.world  = World()
+                            self.world = World()
                             self.go_fade = 0.0
-                            self.scene  = Scene("play")
+                            self.scene = Scene("play")
 
-                # ── KEYUP ───────────────────────────────────────────────
                 elif e.type == pg.KEYUP:
                     if self.scene.name == "play":
                         if e.key == pg.K_SPACE:
-                            # Tenta carregado; se não carregou o mínimo, tiro normal
                             if not self.world.try_fire_charged():
                                 self.world.ship.charge_time = 0.0
                                 self.world.try_fire()
-                        # Soltar Ctrl encerra o modo minigun (se ativo)
                         if e.key in (pg.K_LCTRL, pg.K_RCTRL):
                             self.world.deactivate_special()
 
-            # ── Atualização e renderização ───────────────────────────────
             keys = pg.key.get_pressed()
             self.screen.fill(C.BLACK)
 
@@ -93,11 +90,10 @@ class Game:
             elif self.scene.name == "play":
                 self.world.update(dt, keys)
                 self.world.draw(self.screen, self.font)
-                # Verifica se o mundo sinalizou fim de jogo
                 if self.world.game_over:
                     self.final_score = self.world.score
-                    self.go_fade     = 0.0
-                    self.scene       = Scene("game_over")
+                    self.go_fade = 0.0
+                    self.scene = Scene("game_over")
 
             elif self.scene.name == "game_over":
                 self.go_fade += dt
@@ -106,7 +102,7 @@ class Game:
             pg.display.flip()
 
     def draw_game_over(self):
-        # Exibe a tela de game over com fade-in, pontuação final e instruções.
+        """Fade-in game over screen with final score and restart instructions."""
         alpha = min(255, int(255 * self.go_fade / C.GAME_OVER_FADE_DURATION))
 
         overlay = pg.Surface((C.WIDTH, C.HEIGHT), pg.SRCALPHA)
@@ -129,7 +125,7 @@ class Game:
              C.WIDTH // 2 - 90, C.HEIGHT // 2 + 80)
 
     def draw_menu(self):
-        # Draw the title screen and the basic control instructions.
+        """Draw the title screen and control instructions."""
         text(self.screen, self.big, "ASTEROIDS",
              C.WIDTH // 2 - 150, 160)
         text(self.screen, self.font,
@@ -145,4 +141,7 @@ class Game:
              "Colete os orbies ciano para carregar a barra especial!",
              155, 385)
         text(self.screen, self.font,
-             "Pressione qualquer tecla para comecar...", 225, 440)
+             "Modulos de reparo (verde) recuperam 1 vida!",
+             195, 420)
+        text(self.screen, self.font,
+             "Pressione qualquer tecla para comecar...", 225, 460)
