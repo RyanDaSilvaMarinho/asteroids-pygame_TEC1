@@ -56,7 +56,7 @@ class Game:
                         if e.key == pg.K_SPACE:
                             pass   # carga acumula via keys no update
                         if e.key == pg.K_LSHIFT:
-                            self.world.hyperspace()
+                            self.world.try_dash()
                         # Ctrl esquerdo ou direito ativam a habilidade especial
                         if e.key in (pg.K_LCTRL, pg.K_RCTRL):
                             self.world.activate_special()
@@ -133,13 +133,16 @@ class Game:
         text(self.screen, self.big, "ASTEROIDS",
              C.WIDTH // 2 - 150, 160)
         text(self.screen, self.font,
-             "Setas: virar / acelerar     Espaco: tiro     Shift: hiper",
-             145, 280)
+             "Setas: virar / acelerar     Espaco: tiro",
+             195, 280)
         text(self.screen, self.font,
-             "Ctrl: especial  (barra parcial = minigun | barra cheia = radial)",
-             90, 315)
+             "Shift: dash quantico (cd 3.5s)    Ctrl: especial",
+             155, 315)
         text(self.screen, self.font,
-             "Colete os orbies ciano para carregar a barra especial!",
+             "Barra parcial = minigun  |  barra cheia = radial",
              155, 350)
         text(self.screen, self.font,
-             "Pressione qualquer tecla para comecar...", 225, 400)
+             "Colete os orbies ciano para carregar a barra especial!",
+             155, 385)
+        text(self.screen, self.font,
+             "Pressione qualquer tecla para comecar...", 225, 440)
